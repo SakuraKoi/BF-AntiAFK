@@ -35,6 +35,18 @@ namespace dev.sakurakooi.BattlefieldAntiAFK {
         [DllImport("user32.dll")]
         public static extern int SetForegroundWindow(IntPtr hwnd);
 
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LASTINPUTINFO {
+            [MarshalAs(UnmanagedType.U4)] public UInt32 cbSize;
+            [MarshalAs(UnmanagedType.U4)] public UInt32 dwTime;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         private void timer1_Tick(object sender, EventArgs e) {
             var hwnd = new Func<IntPtr>(delegate() {
@@ -53,6 +65,15 @@ namespace dev.sakurakooi.BattlefieldAntiAFK {
                 return;
             }
 
+            var currentForeground = GetForegroundWindow();
+
+            if (currentForeground == hwnd) { // In game -> check idle
+                if (!checkIdleTime()) { // Check system no any input for 15s
+                    label1.BeginInvoke(new Action(() => { label1.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " 正在游戏中"; }));
+                    return;
+                }
+            } // Outside game -> always do Anti-AFK
+
             SetForegroundWindow(hwnd);
             Thread.Sleep(2000);
 
@@ -60,6 +81,28 @@ namespace dev.sakurakooi.BattlefieldAntiAFK {
             Thread.Sleep(200);
             Keybd_Event(WinVK.TAB, MapVirtualKey(WinVK.TAB, 0), 2, 0);
             label1.BeginInvoke(new Action(() => { label1.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " 模拟输入成功"; }));
+
+            Thread.Sleep(500);
+            if (currentForeground != hwnd) { // Restore foreground window
+                SetForegroundWindow(currentForeground);
+            }
+        }
+
+        private bool checkIdleTime() {
+            uint idleTime = 0;
+            LASTINPUTINFO lastInputInfo = new LASTINPUTINFO();
+            lastInputInfo.cbSize = (uint) Marshal.SizeOf(lastInputInfo);
+            lastInputInfo.dwTime = 0;
+
+            uint envTicks = (uint) Environment.TickCount;
+
+            if (GetLastInputInfo(ref lastInputInfo)) {
+                uint lastInputTick = lastInputInfo.dwTime;
+                idleTime = envTicks - lastInputTick;
+            }
+
+            idleTime /= 1000;
+            return idleTime <= 15;
         }
     }
 }
